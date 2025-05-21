@@ -1,1 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A4 Photo Collage Maker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
 
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .description {
+            text-align: center;
+            max-width: 600px;
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+
+        .btn:hover {
+            background-color: #45a049;
+        }
+
+        .btn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .preview-container {
+            width: 100%;
+            max-width: 800px;
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        #preview {
+            width: 100%;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            background-color: white;
+        }
+
+        .status {
+            margin-top: 10px;
+            text-align: center;
+            color: #666;
+        }
+
+        .progress-container {
+            width: 100%;
+            background-color: #ddd;
+            border-radius: 4px;
+            margin-top: 10px;
+            display: none;
+        }
+
+        .progress-bar {
+            height: 20px;
+            width: 0;
+            background-color: #4CAF50;
+            border-radius: 4px;
+            text-align: center;
+            line-height: 20px;
+            color: white;
+        }
+
+        .info-text {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                width: 100%;
+            }
+            
+            .btn {
+                width: 100%;
+            }
+        }
+
+        /* A4 Paper dimensions for preview */
+        .a4-paper {
+            width: 210mm; /* A4 width */
+            height: 297mm; /* A4 height */
+            margin: 0 auto;
+            background-color: white;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Grid for the images */
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(4, 1fr);
+            gap: 5mm; /* spacing between images */
+            padding: 10mm; /* padding around the grid */
+            height: 100%;
+        }
+
+        .image-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background-color: #f9f9f9;
+            border: 1px dashed #ccc;
+            overflow: hidden;
+        }
+
+        .image-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* This will crop the image to fill the container */
+        }
+
+        .placeholder-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #aaa;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>A4 Photo Collage Maker</h1>
+        <p class="description">Create a perfect A4 collage with 8 square images that you can print directly. Images will be automatically resized and centered to maintain the 1:1 aspect ratio.</p>
+        
+        <div class="controls">
+            <input type="file" id="fileInput" accept="image/*" multiple style="display: none;">
+            <button id="addImagesBtn" class="btn">Add Images</button>
+            <button id="downloadBtn" class="btn" disabled>Download as PNG</button>
+        </div>
+        
+        <p id="selectedCount" class="status">No images selected (0/8)</p>
+        
+        <div class="preview-container">
+            <div class="a4-paper">
+                <div class="image-grid" id="imageGrid">
+                    <!-- Image placeholders will be added here -->
+                </div>
+            </div>
+        </div>
+        
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar" id="progressBar">0%</div>
+        </div>
+        
+        <p class="info-text">The final image will be saved as "readytoprint.png" in A4 size, ready for printing.</p>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const addImagesBtn = document.getElementById('addImagesBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const selectedCount = document.getElementById('selectedCount');
+        const imageGrid = document.getElementById('imageGrid');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        
+        // A4 dimensions in pixels at 300 DPI
+        const A4_WIDTH = 2480; // 210mm at 300dpi
+        const A4_HEIGHT = 3508; // 297mm at 300dpi
+        
+        let selectedImages = [];
+        const MAX_IMAGES = 8;
+        
+        // Create image placeholders
+        for (let i = 0; i < MAX_IMAGES; i++) {
+            const imageContainer = document.createElement('div');
+            imageContainer.className = 'image-container';
+            imageContainer.dataset.index = i;
+            
+            const placeholderText = document.createElement('div');
+            placeholderText.className = 'placeholder-text';
+            placeholderText.textContent = `Image ${i + 1}`;
+            
+            imageContainer.appendChild(placeholderText);
+            imageGrid.appendChild(imageContainer);
+        }
+        
+        // Add event listeners
+        addImagesBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', handleFileSelect);
+        downloadBtn.addEventListener('click', generateAndDownload);
+        
+        function handleFileSelect(event) {
+            const files = event.target.files;
+            
+            if (files.length > MAX_IMAGES) {
+                alert(`You can only select up to ${MAX_IMAGES} images. Only the first ${MAX_IMAGES} will be used.`);
+            }
+            
+            // Clear previous images
+            selectedImages = [];
+            const imageContainers = document.querySelectorAll('.image-container');
+            imageContainers.forEach(container => {
+                const placeholder = container.querySelector('.placeholder-text');
+                if (placeholder) placeholder.classList.remove('hidden');
+                
+                const existingImg = container.querySelector('img');
+                if (existingImg) container.removeChild(existingImg);
+            });
+            
+            // Process new images
+            for (let i = 0; i < Math.min(files.length, MAX_IMAGES); i++) {
+                const file = files[i];
+                if (file.type.startsWith('image/')) {
+                    selectedImages.push(file);
+                    loadImagePreview(file, i);
+                }
+            }
+            
+            updateUI();
+        }
+        
+        function loadImagePreview(file, index) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const container = document.querySelector(`.image-container[data-index="${index}"]`);
+                    const placeholder = container.querySelector('.placeholder-text');
+                    if (placeholder) placeholder.classList.add('hidden');
+                    
+                    const existingImg = container.querySelector('img');
+                    if (existingImg) container.removeChild(existingImg);
+                    
+                    const newImg = document.createElement('img');
+                    newImg.src = e.target.result;
+                    container.appendChild(newImg);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        function updateUI() {
+            selectedCount.textContent = `Selected ${selectedImages.length}/${MAX_IMAGES} images`;
+            downloadBtn.disabled = selectedImages.length === 0;
+        }
+        
+        function generateAndDownload() {
+            if (selectedImages.length === 0) {
+                alert('Please select at least one image first.');
+                return;
+            }
+            
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressBar.textContent = '0%';
+            
+            // Create a virtual canvas for the A4 page
+            const canvas = document.createElement('canvas');
+            canvas.width = A4_WIDTH;
+            canvas.height = A4_HEIGHT;
+            const ctx = canvas.getContext('2d');
+            
+            // Fill with white background
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Calculate grid dimensions
+            const padding = A4_WIDTH * 0.05; // 5% padding
+            const availableWidth = A4_WIDTH - (padding * 2);
+            const availableHeight = A4_HEIGHT - (padding * 2);
+            const gap = availableWidth * 0.02; // 2% gap
+            
+            // 2 images per row, 4 rows
+            const imageWidth = (availableWidth - gap) / 2;
+            const imageHeight = (availableHeight - (gap * 3)) / 4;
+            
+            // Square images: use the smaller dimension
+            const squareDimension = Math.min(imageWidth, imageHeight);
+            
+            // Recalculate positions to center the grid
+            const totalGridWidth = (squareDimension * 2) + gap;
+            const totalGridHeight = (squareDimension * 4) + (gap * 3);
+            
+            const startX = (A4_WIDTH - totalGridWidth) / 2;
+            const startY = (A4_HEIGHT - totalGridHeight) / 2;
+            
+            // Load all images and draw them
+            let loadedCount = 0;
+            const loadedImages = [];
+            
+            selectedImages.forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        loadedImages[index] = img;
+                        loadedCount++;
+                        
+                        // Update progress
+                        const progress = Math.round((loadedCount / selectedImages.length) * 100);
+                        progressBar.style.width = `${progress}%`;
+                        progressBar.textContent = `${progress}%`;
+                        
+                        if (loadedCount === selectedImages.length) {
+                            // Draw all images in the correct order
+                            for (let i = 0; i < selectedImages.length; i++) {
+                                const img = loadedImages[i];
+                                if (!img) continue;
+                                
+                                const row = Math.floor(i / 2);
+                                const col = i % 2;
+                                
+                                const x = startX + (col * (squareDimension + gap));
+                                const y = startY + (row * (squareDimension + gap));
+                                
+                                // Get square crop from center of image
+                                let sx, sy, sSize;
+                                if (img.width > img.height) {
+                                    sSize = img.height;
+                                    sx = (img.width - img.height) / 2;
+                                    sy = 0;
+                                } else {
+                                    sSize = img.width;
+                                    sx = 0;
+                                    sy = (img.height - img.width) / 2;
+                                }
+                                
+                                // Draw image
+                                ctx.drawImage(img, sx, sy, sSize, sSize, x, y, squareDimension, squareDimension);
+                            }
+                            
+                            // Convert to PNG and download
+                            setTimeout(() => {
+                                const dataURL = canvas.toDataURL('image/png');
+                                const link = document.createElement('a');
+                                link.download = 'readytoprint.png';
+                                link.href = dataURL;
+                                link.click();
+                                
+                                progressContainer.style.display = 'none';
+                            }, 500);
+                        }
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+    </script>
+</body>
+</html>
